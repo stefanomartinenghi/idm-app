@@ -73,6 +73,57 @@ jobs:
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Create GitHub App token for idm-gitops
+        id: gitops-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: idm-gitops
+          permission-contents: write
+
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/idm-gitops
+          ref: main
+          token: ${{ steps.gitops-token.outputs.token }}
+          path: idm-gitops
+
+      - name: Update local-test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          overlay="idm-gitops/apps/idm/overlays/local-test/kustomization.yaml"
+
+          sed -i -E \
+            "s/^([[:space:]]*newTag:).*/\1 ${IMAGE_TAG}/" \
+            "${overlay}"
+
+          grep -q "newTag: ${IMAGE_TAG}" "${overlay}"
+          kubectl kustomize idm-gitops/apps/idm/overlays/local-test >/dev/null
+
+      - name: Commit local-test promotion
+        shell: bash
+        env:
+          APP_SLUG: ${{ steps.gitops-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          cd idm-gitops
+
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          git add apps/idm/overlays/local-test/kustomization.yaml
+
+          if git diff --cached --quiet; then
+            echo "local-test already references ${IMAGE_TAG}"
+            exit 0
+          fi
+
+          git commit -m "Deploy idm-app ${IMAGE_TAG} to local-test"
+          git push origin main
+
       - name: Remove local tagged image
         if: always()
         shell: bash
