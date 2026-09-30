@@ -18,3 +18,10 @@ Variabili runtime:
 
 - `PORT`, default `8080`;
 - `APP_ENV`, default `local`.
+
+## Continuous Integration
+
+Il workflow `.github/workflows/ci.yml` viene eseguito sulle pull request verso `main`, sui
+push a `main` e manualmente. Usa Java 17, esegue `mvn clean verify` e conserva il JAR come
+artefatto GitHub per sette giorni. Il workflow ha accesso al solo contenuto del repository e
+non dispone di credenziali di deploy.
