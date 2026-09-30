@@ -25,3 +25,15 @@ Il workflow `.github/workflows/ci.yml` viene eseguito sulle pull request verso `
 push a `main` e manualmente. Usa Java 17, esegue `mvn clean verify` e conserva il JAR come
 artefatto GitHub per sette giorni. Il workflow ha accesso al solo contenuto del repository e
 non dispone di credenziali di deploy.
+
+## Pubblicazione dell'immagine
+
+Dopo un push a `main`, `.github/workflows/publish-image.yml` usa il runner self-hosted con
+label `idm-local`. Il Dockerfile ripete test e packaging in un ambiente isolato, quindi
+pubblica nel registry locale un'immagine immutabile identificata dal commit completo:
+
+```text
+localhost:5001/idm-app:<git-sha>
+```
+
+Questa fase produce l'artefatto distribuibile ma non modifica ancora i manifest GitOps.

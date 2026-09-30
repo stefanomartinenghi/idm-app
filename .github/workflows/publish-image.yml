@@ -1,0 +1,79 @@
+name: Publish image for local-test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - pom.xml
+      - Dockerfile
+      - .dockerignore
+      - ".github/workflows/publish-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-idm-app-local-test
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Build and publish immutable image
+    runs-on:
+      - self-hosted
+      - idm-local
+    timeout-minutes: 20
+    env:
+      IMAGE_REPOSITORY: localhost:5001/idm-app
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Verify local delivery services
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker info >/dev/null
+          curl --fail --silent --show-error http://localhost:5001/v2/ >/dev/null
+
+      - name: Build and test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${IMAGE_REPOSITORY}:${IMAGE_TAG}" \
+            .
+
+      - name: Push immutable image
+        shell: bash
+        run: docker push "${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+
+      - name: Verify image in registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --header "Accept: application/vnd.oci.image.manifest.v1+json" \
+            "http://localhost:5001/v2/idm-app/manifests/${IMAGE_TAG}" \
+            >/dev/null
+
+          {
+            echo "### Published image"
+            echo '```text'
+            echo "${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove local tagged image
+        if: always()
+        shell: bash
+        run: docker image rm "${IMAGE_REPOSITORY}:${IMAGE_TAG}" >/dev/null 2>&1 || true
