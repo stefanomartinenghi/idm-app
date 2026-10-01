@@ -45,7 +45,8 @@ jobs:
           set -euo pipefail
           mkdir -p image
           cp target/idm-app-*.jar image/idm-app.jar
-          sha256sum image/idm-app.jar | tee image/idm-app.jar.sha256
+          cd image
+          sha256sum idm-app.jar | tee idm-app.jar.sha256
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v7
