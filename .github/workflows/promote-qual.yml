@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vMAJOR.MINOR.PATCH tag to promote
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,14 +23,18 @@ jobs:
     name: Validate release tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
     outputs:
       image-tag: ${{ steps.release.outputs.image-tag }}
+      release-version: ${{ steps.release.outputs.release-version }}
 
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Resolve and validate release
         id: release
@@ -32,29 +42,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Release tag must use the vMAJOR.MINOR.PATCH format" >&2
             exit 1
           fi
 
           git fetch --no-tags origin main:refs/remotes/origin/main
-          image_tag="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          image_tag="$(git rev-list -n 1 "${RELEASE_TAG}")"
 
           if [[ ! "${image_tag}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Unable to resolve ${GITHUB_REF_NAME} to a commit" >&2
+            echo "Unable to resolve ${RELEASE_TAG} to a commit" >&2
             exit 1
           fi
 
           if ! git merge-base --is-ancestor "${image_tag}" origin/main; then
-            echo "Tag ${GITHUB_REF_NAME} does not reference a commit on main" >&2
+            echo "Tag ${RELEASE_TAG} does not reference a commit on main" >&2
             exit 1
           fi
 
           echo "image-tag=${image_tag}" >> "${GITHUB_OUTPUT}"
+          echo "release-version=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
           {
             echo "### Validated release"
-            echo "- Version: \`${GITHUB_REF_NAME}\`"
+            echo "- Version: \`${RELEASE_TAG}\`"
             echo "- Commit: \`${image_tag}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
@@ -69,7 +80,7 @@ jobs:
     env:
       IMAGE_REPOSITORY: localhost:5001/idm-app
       IMAGE_TAG: ${{ needs.validate-tag.outputs.image-tag }}
-      RELEASE_VERSION: ${{ github.ref_name }}
+      RELEASE_VERSION: ${{ needs.validate-tag.outputs.release-version }}
 
     steps:
       - name: Verify immutable image in local registry
@@ -131,11 +142,29 @@ jobs:
             "${overlay}"
 
           if ! grep -q "^[[:space:]]*- environment: local-qual$" "${applicationset}"; then
-            sed -i \
-              "/^[[:space:]]*namespace: idm-test$/a\\
-          - environment: local-qual\\
-            namespace: idm-qual" \
-              "${applicationset}"
+            python3 - "${applicationset}" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          content = path.read_text(encoding="utf-8")
+          anchor = (
+              "          - environment: local-test\n"
+              "            namespace: idm-test\n"
+          )
+          local_qual = (
+              "          - environment: local-qual\n"
+              "            namespace: idm-qual\n"
+          )
+
+          if anchor not in content:
+              raise SystemExit("local-test ApplicationSet entry not found")
+
+          path.write_text(
+              content.replace(anchor, anchor + local_qual, 1),
+              encoding="utf-8",
+          )
+          PY
           fi
 
           grep -q "newTag: ${IMAGE_TAG}" "${overlay}"
