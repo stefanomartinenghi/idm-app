@@ -21,16 +21,17 @@ Variabili runtime:
 
 ## Continuous Integration
 
-Il workflow `.github/workflows/ci.yml` viene eseguito sulle pull request verso `main`, sui
-push a `main` e manualmente. Usa Java 17, esegue `mvn clean verify` e conserva il JAR come
-artefatto GitHub per sette giorni. Il workflow ha accesso al solo contenuto del repository e
-non dispone di credenziali di deploy.
+Il workflow `.github/workflows/ci.yml` viene eseguito sulle pull request verso `main` e
+manualmente. Usa Java 17 ed esegue `mvn clean verify`. Il workflow ha accesso al solo
+contenuto del repository e non dispone di credenziali di deploy.
 
 ## Pubblicazione dell'immagine
 
-Dopo un push a `main`, `.github/workflows/publish-image.yml` usa il runner self-hosted con
-label `idm-local`. Il Dockerfile ripete test e packaging in un ambiente isolato, quindi
-pubblica nel registry locale un'immagine immutabile identificata dal commit completo:
+Dopo un push a `main`, `.github/workflows/publish-image.yml` esegue due job sequenziali. Il
+primo usa un runner GitHub, esegue test e packaging una sola volta e pubblica il JAR con il
+relativo checksum SHA-256. Il secondo job parte solo se il primo termina correttamente, usa il
+runner self-hosted con label `idm-local` e costruisce l'immagine scaricando esattamente quel
+JAR, senza ricompilarlo. L'immagine è identificata dal commit completo:
 
 ```text
 localhost:5001/idm-app:<git-sha>

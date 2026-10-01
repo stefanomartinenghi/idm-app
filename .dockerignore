@@ -3,4 +3,6 @@
 .idea
 .vscode
 target
+src
+pom.xml
 README.md

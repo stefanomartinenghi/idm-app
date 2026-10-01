@@ -1,4 +1,4 @@
-name: Publish image for local-test
+name: Build and release to local-test
 
 on:
   push:
@@ -16,12 +16,50 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-idm-app-local-test
+  group: release-idm-app-local-test
   cancel-in-progress: true
 
 jobs:
+  build:
+    name: Test and build JAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Test and package
+        run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Prepare immutable JAR artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p image
+          cp target/idm-app-*.jar image/idm-app.jar
+          sha256sum image/idm-app.jar | tee image/idm-app.jar.sha256
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: idm-app-jar-${{ github.sha }}
+          path: |
+            image/idm-app.jar
+            image/idm-app.jar.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
-    name: Build and publish immutable image
+    name: Publish image and promote local-test
+    needs: build
     runs-on:
       - self-hosted
       - idm-local
@@ -34,6 +72,19 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v7
 
+      - name: Download tested JAR
+        uses: actions/download-artifact@v8
+        with:
+          name: idm-app-jar-${{ github.sha }}
+          path: image
+
+      - name: Verify JAR integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd image
+          sha256sum --check idm-app.jar.sha256
+
       - name: Verify local delivery services
         shell: bash
         run: |
@@ -41,7 +92,7 @@ jobs:
           docker info >/dev/null
           curl --fail --silent --show-error http://localhost:5001/v2/ >/dev/null
 
-      - name: Build and test image
+      - name: Build runtime image from tested JAR
         shell: bash
         run: |
           set -euo pipefail
@@ -124,7 +175,10 @@ jobs:
           git commit -m "Deploy idm-app ${IMAGE_TAG} to local-test"
           git push origin main
 
-      - name: Remove local tagged image
+      - name: Remove local image files
         if: always()
         shell: bash
-        run: docker image rm "${IMAGE_REPOSITORY}:${IMAGE_TAG}" >/dev/null 2>&1 || true
+        run: |
+          docker image rm "${IMAGE_REPOSITORY}:${IMAGE_TAG}" >/dev/null 2>&1 || true
+          rm -f -- image/idm-app.jar image/idm-app.jar.sha256
+          rmdir -- image 2>/dev/null || true
