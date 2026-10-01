@@ -93,7 +93,7 @@ jobs:
           docker info >/dev/null
           curl --fail --silent --show-error http://localhost:5001/v2/ >/dev/null
 
-      - name: Build runtime image from tested JAR
+      - name: Build docker image from tested JAR
         shell: bash
         run: |
           set -euo pipefail
