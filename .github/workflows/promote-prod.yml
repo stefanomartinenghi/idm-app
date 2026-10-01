@@ -1,0 +1,210 @@
+name: Promote approved release to local-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vMAJOR.MINOR.PATCH tag already deployed in local-qual
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-idm-app-local-prod
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    name: Validate production candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    outputs:
+      image-tag: ${{ steps.release.outputs.image-tag }}
+      release-version: ${{ steps.release.outputs.release-version }}
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag }}
+
+      - name: Resolve and validate release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must use the vMAJOR.MINOR.PATCH format" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          image_tag="$(git rev-list -n 1 "${RELEASE_TAG}")"
+
+          if [[ ! "${image_tag}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unable to resolve ${RELEASE_TAG} to a commit" >&2
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "${image_tag}" origin/main; then
+            echo "Tag ${RELEASE_TAG} does not reference a commit on main" >&2
+            exit 1
+          fi
+
+          echo "image-tag=${image_tag}" >> "${GITHUB_OUTPUT}"
+          echo "release-version=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "### Validated production candidate"
+            echo "- Version: \`${RELEASE_TAG}\`"
+            echo "- Commit: \`${image_tag}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  promote:
+    name: Approve and promote existing image to local-prod
+    needs: validate-release
+    runs-on:
+      - self-hosted
+      - idm-local
+    environment: local-prod
+    timeout-minutes: 20
+    env:
+      IMAGE_REPOSITORY: localhost:5001/idm-app
+      IMAGE_TAG: ${{ needs.validate-release.outputs.image-tag }}
+      RELEASE_VERSION: ${{ needs.validate-release.outputs.release-version }}
+
+    steps:
+      - name: Verify image and local-qual deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --header "Accept: application/vnd.oci.image.manifest.v1+json" \
+            "http://localhost:5001/v2/idm-app/manifests/${IMAGE_TAG}" \
+            >/dev/null
+
+          qual_sync="$(kubectl get application idm-local-qual -n argocd -o jsonpath='{.status.sync.status}')"
+          qual_health="$(kubectl get application idm-local-qual -n argocd -o jsonpath='{.status.health.status}')"
+
+          if [[ "${qual_sync}" != "Synced" || "${qual_health}" != "Healthy" ]]; then
+            echo "local-qual must be Synced and Healthy before production promotion" >&2
+            exit 1
+          fi
+
+      - name: Create GitHub App token for idm-gitops
+        id: gitops-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: idm-gitops
+          permission-contents: write
+
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/idm-gitops
+          ref: main
+          token: ${{ steps.gitops-token.outputs.token }}
+          path: idm-gitops
+
+      - name: Verify candidate is deployed in local-qual
+        shell: bash
+        run: |
+          set -euo pipefail
+          qual_overlay="idm-gitops/apps/idm/overlays/local-qual/kustomization.yaml"
+          qual_tag="$(sed -n -E 's/^[[:space:]]*newTag:[[:space:]]*([^[:space:]]+).*/\1/p' "${qual_overlay}")"
+
+          if [[ "${qual_tag}" != "${IMAGE_TAG}" ]]; then
+            echo "local-qual references ${qual_tag}, not ${IMAGE_TAG}" >&2
+            exit 1
+          fi
+
+      - name: Update local-prod desired state
+        shell: bash
+        run: |
+          set -euo pipefail
+          overlay="idm-gitops/apps/idm/overlays/local-prod/kustomization.yaml"
+          applicationset="idm-gitops/argocd/applicationset.yaml"
+
+          sed -i -E \
+            "s/^([[:space:]]*newTag:).*/\1 ${IMAGE_TAG}/" \
+            "${overlay}"
+
+          if ! grep -q "^[[:space:]]*- environment: local-prod$" "${applicationset}"; then
+            python3 - "${applicationset}" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          content = path.read_text(encoding="utf-8")
+          anchor = (
+              "          - environment: local-qual\n"
+              "            namespace: idm-qual\n"
+          )
+          local_prod = (
+              "          - environment: local-prod\n"
+              "            namespace: idm-prod\n"
+          )
+
+          if anchor not in content:
+              raise SystemExit("local-qual ApplicationSet entry not found")
+
+          path.write_text(
+              content.replace(anchor, anchor + local_prod, 1),
+              encoding="utf-8",
+          )
+          PY
+          fi
+
+          grep -q "newTag: ${IMAGE_TAG}" "${overlay}"
+          grep -q "^[[:space:]]*- environment: local-prod$" "${applicationset}"
+          kubectl kustomize idm-gitops/apps/idm/overlays/local-prod >/dev/null
+          kubectl apply \
+            --dry-run=server \
+            --filename "${applicationset}" \
+            >/dev/null
+
+      - name: Commit local-prod promotion
+        shell: bash
+        env:
+          APP_SLUG: ${{ steps.gitops-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          cd idm-gitops
+
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          git add \
+            apps/idm/overlays/local-prod/kustomization.yaml \
+            argocd/applicationset.yaml
+
+          if git diff --cached --quiet; then
+            echo "local-prod already references ${IMAGE_TAG}"
+            exit 0
+          fi
+
+          git commit \
+            -m "Promote idm-app ${RELEASE_VERSION} (${IMAGE_TAG}) to local-prod"
+          git pull --rebase origin main
+          git push origin main
+
+      - name: Write promotion summary
+        shell: bash
+        run: |
+          {
+            echo "### Promoted approved image to local-prod"
+            echo "- Version: \`${RELEASE_VERSION}\`"
+            echo "- Image: \`${IMAGE_REPOSITORY}:${IMAGE_TAG}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
