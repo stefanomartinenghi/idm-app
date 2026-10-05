@@ -1,6 +1,6 @@
 # idm-app
 
-Applicazione Java 17 minimale usata per dimostrare il processo GitOps CCNO.
+Applicazione Spring Boot su Java 17 usata per dimostrare il processo GitOps CCNO.
 
 ## Avvio locale
 
@@ -11,8 +11,17 @@ java -jar target/idm-app-1.0.0-SNAPSHOT.jar
 
 Endpoint disponibili:
 
-- `GET /` restituisce nome applicazione e ambiente;
-- `GET /health` restituisce lo stato usato dalle probe Kubernetes.
+- `GET /`, `GET /api/idm` e `GET /prova-browser` restituiscono nome applicazione e ambiente;
+- `GET /actuator/health/readiness` espone la readiness probe Kubernetes;
+- `GET /actuator/health/liveness` espone la liveness probe Kubernetes.
+
+Durante la migrazione progressiva degli ambienti, `GET /health` resta disponibile come
+endpoint di compatibilita' per le vecchie probe di qual e prod. In `local-test` Kubernetes
+usa gia' esclusivamente gli endpoint Actuator dedicati.
+
+Il codice applicativo e' separato in Controller, Service e DTO. Un filtro HTTP registra le
+richieste applicative, ma omette dai normali access log le probe Actuator concluse con
+successo. Le probe fallite vengono invece registrate.
 
 Variabili runtime:
 
