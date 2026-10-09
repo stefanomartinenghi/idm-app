@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="
+             http://maven.apache.org/POM/4.0.0
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
+
+    <!-- ========================================================= -->
+    <!-- SPRING BOOT                                               -->
+    <!-- ========================================================= -->
+    <!--
+        Spring Boot gestisce centralmente le versioni delle
+        principali dipendenze utilizzate dal progetto:
+        Spring Framework, Hibernate, Jackson, Tomcat,
+        MariaDB Driver, Validation, Security, ecc.
+    -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -11,37 +25,385 @@
         <relativePath/>
     </parent>
 
+
+    <!-- ========================================================= -->
+    <!-- PROJECT                                                   -->
+    <!-- ========================================================= -->
+
     <groupId>it.coop.ccno</groupId>
     <artifactId>idm-app</artifactId>
     <version>1.0.0-SNAPSHOT</version>
+
     <name>idm-app</name>
 
+    <description>
+        Identity Management Application - CCNO
+    </description>
+
+    <!--
+        Applicazione Spring Boot standalone.
+
+        Il JAR prodotto contiene il runtime necessario
+        all'avvio dell'applicazione:
+
+        java -jar idm-app-ccno.jar
+
+        Questa modalità è particolarmente indicata
+        per la successiva containerizzazione su Kubernetes.
+    -->
+    <packaging>jar</packaging>
+
+
+    <!-- ========================================================= -->
+    <!-- PROPERTIES                                                -->
+    <!-- ========================================================= -->
+
     <properties>
-        <java.version>17</java.version>
+
+        <!-- Java LTS utilizzata dal progetto -->
+        <java.version>25</java.version>
+
+        <!-- Encoding sorgenti e build -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!--
+            Versioni delle librerie non gestite direttamente
+            dal dependency management di Spring Boot.
+        -->
+        <keycloak.version>26.0.12</keycloak.version>
+        <springdoc.version>3.1.1</springdoc.version>
+
     </properties>
 
+
+    <!-- ========================================================= -->
+    <!-- DEPENDENCIES                                              -->
+    <!-- ========================================================= -->
+
     <dependencies>
+
+
+        <!-- ===================================================== -->
+        <!-- WEB / REST API                                        -->
+        <!-- ===================================================== -->
+        <!--
+            Spring MVC per la realizzazione delle REST API.
+
+            Include:
+            - Spring MVC
+            - gestione HTTP
+            - conversione JSON
+            - Tomcat embedded
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- REST CLIENT                                           -->
+        <!-- ===================================================== -->
+        <!--
+            Supporto per le chiamate HTTP verso servizi esterni.
+
+            Permette di utilizzare principalmente:
+
+            RestClient
+            RestClient.Builder
+            RestTemplate
+            HTTP Service Client
+
+            Da preferire alle vecchie librerie:
+            Apache HttpClient 4
+            Unirest
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- DATABASE / JPA / HIBERNATE                            -->
+        <!-- ===================================================== -->
+        <!--
+            Spring Data JPA.
+
+            Porta automaticamente le componenti necessarie per:
+            - JPA
+            - Hibernate ORM
+            - gestione transazioni
+            - repository Spring Data
+            - EntityManager
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- DATABASE DRIVER                                       -->
+        <!-- ===================================================== -->
+        <!--
+            Driver JDBC MariaDB.
+
+            Scope runtime perché il driver non è necessario
+            alla compilazione del codice applicativo.
+        -->
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- VALIDATION                                            -->
+        <!-- ===================================================== -->
+        <!--
+            Jakarta Bean Validation.
+
+            Consente l'utilizzo di annotazioni come:
+
+            @Valid
+            @NotNull
+            @NotBlank
+            @NotEmpty
+            @Size
+            @Email
+            @Pattern
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- SECURITY / OAUTH2 / KEYCLOAK                          -->
+        <!-- ===================================================== -->
+        <!--
+            Spring Security OAuth2 Resource Server.
+
+            Viene utilizzato per proteggere le REST API IDM
+            verificando gli Access Token JWT emessi da Keycloak.
+
+            Include già Spring Security, quindi non è necessario
+            aggiungere separatamente:
+
+            spring-boot-starter-security
+
+            La configurazione potrà utilizzare ad esempio:
+
+            spring.security.oauth2.resourceserver.jwt.issuer-uri
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- KEYCLOAK ADMIN CLIENT                                 -->
+        <!-- ===================================================== -->
+        <!--
+            Client Java per le operazioni amministrative
+            verso Keycloak.
+
+            Potrà essere utilizzato dal servizio IDM per:
+
+            - ricerca utenti
+            - creazione utenti
+            - modifica utenti
+            - cancellazione utenti
+            - gestione attributi
+            - gestione password
+            - gestione gruppi
+            - gestione ruoli
+            - gestione credenziali
+        -->
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-admin-client</artifactId>
+            <version>${keycloak.version}</version>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- ACTUATOR / HEALTH / MONITORING                        -->
+        <!-- ===================================================== -->
+        <!--
+            Endpoint tecnici dell'applicazione.
+
+            Utilizzabile per:
+
+            /actuator/health
+            /actuator/info
+
+            e per Kubernetes:
+
+            livenessProbe
+            readinessProbe
+
+            Spring Boot espone anche:
+
+            /actuator/health/liveness
+            /actuator/health/readiness
+
+            quando opportunamente configurato.
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- OPENAPI / SWAGGER                                     -->
+        <!-- ===================================================== -->
+        <!--
+            Generazione automatica della documentazione
+            OpenAPI delle REST API.
+
+            Endpoint principali:
+
+            /v3/api-docs
+            /v3/api-docs.yaml
+            /swagger-ui.html
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- LOMBOK                                                -->
+        <!-- ===================================================== -->
+        <!--
+            Riduzione del boilerplate Java.
+
+            Annotazioni tipiche:
+
+            @Getter
+            @Setter
+            @Builder
+            @Data
+            @Value
+            @RequiredArgsConstructor
+            @NoArgsConstructor
+            @AllArgsConstructor
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- TEST                                                  -->
+        <!-- ===================================================== -->
+        <!--
+            Starter principale per i test.
+
+            Include il supporto per:
+            - JUnit
+            - Mockito
+            - AssertJ
+            - Hamcrest
+            - Spring Test
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+
+        <!--
+            Supporto specifico ai test Spring Security.
+
+            Utile ad esempio per testare:
+            - utenti autenticati
+            - ruoli
+            - JWT
+            - endpoint protetti
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+
     </dependencies>
 
+
+    <!-- ========================================================= -->
+    <!-- BUILD                                                     -->
+    <!-- ========================================================= -->
+
     <build>
+
+        <!--
+            Nome finale del JAR:
+
+            target/idm-app-ccno.jar
+        -->
+        <finalName>idm-app-ccno</finalName>
+
         <plugins>
+
+
+            <!-- ================================================= -->
+            <!-- SPRING BOOT MAVEN PLUGIN                          -->
+            <!-- ================================================= -->
+            <!--
+                Genera il JAR Spring Boot eseguibile.
+
+                Esecuzione:
+
+                java -jar target/idm-app-ccno.jar
+
+                Il plugin utilizza automaticamente Java 25
+                grazie alla property:
+
+                <java.version>25</java.version>
+            -->
             <plugin>
+
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+
+                <configuration>
+
+                    <!--
+                        Lombok è necessario solamente durante
+                        la compilazione e non deve essere inserito
+                        nel JAR applicativo finale.
+                    -->
+                    <excludes>
+
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+
+                    </excludes>
+
+                </configuration>
+
             </plugin>
+
+
         </plugins>
+
     </build>
+
+
 </project>
