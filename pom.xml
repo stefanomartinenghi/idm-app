@@ -66,6 +66,7 @@
         <!-- Encoding sorgenti e build -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <argLine></argLine>
 
         <!--
             Versioni delle librerie non gestite direttamente
@@ -358,6 +359,35 @@
         <finalName>idm-app-ccno</finalName>
 
         <plugins>
+
+
+            <!-- ================================================= -->
+            <!-- TEST AGENT FOR JAVA 25                            -->
+            <!-- ================================================= -->
+            <!--
+                Java 25 non garantisce l'auto-attach dinamico usato
+                da Mockito. Il dependency plugin espone il percorso
+                del JAR e Surefire lo collega esplicitamente.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+                </configuration>
+            </plugin>
 
 
             <!-- ================================================= -->

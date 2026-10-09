@@ -18,7 +18,7 @@ concurrency:
 jobs:
   validate-release:
     name: Validate production candidate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}

@@ -1,12 +1,12 @@
 # idm-app
 
-Applicazione Spring Boot su Java 17 usata per dimostrare il processo GitOps CCNO.
+Applicazione Spring Boot su Java 25 usata per dimostrare il processo GitOps CCNO.
 
 ## Avvio locale
 
 ```bash
 mvn verify
-java -jar target/idm-app-1.0.0-SNAPSHOT.jar
+java -jar target/idm-app-ccno.jar
 ```
 
 Endpoint disponibili:
@@ -26,12 +26,22 @@ successo. Le probe fallite vengono invece registrate.
 Variabili runtime:
 
 - `PORT`, default `8080`;
-- `APP_ENV`, default `local`.
+- `APP_ENV`, default `local`;
+- `SECURITY_ENABLED`, default `false`;
+- `SPRING_PROFILES_ACTIVE=database` abilita JPA quando MariaDB e' disponibile;
+- `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` e
+  `SPRING_DATASOURCE_PASSWORD` configurano MariaDB;
+- `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` configura Keycloak quando
+  `SECURITY_ENABLED=true`.
+
+Il profilo predefinito `no-database` disabilita l'autoconfigurazione JPA perche' nel cluster
+locale non e' ancora presente MariaDB. Le dipendenze JPA e MariaDB sono gia' incluse e
+diventano operative attivando il profilo `database` con le relative credenziali.
 
 ## Continuous Integration
 
 Il workflow `.github/workflows/ci.yml` viene eseguito sulle pull request verso `main` e
-manualmente. Usa Java 17 ed esegue `mvn clean verify`. Il workflow ha accesso al solo
+manualmente. Usa Java 25 ed esegue `mvn clean verify`. Il workflow ha accesso al solo
 contenuto del repository e non dispone di credenziali di deploy.
 
 ## Pubblicazione dell'immagine

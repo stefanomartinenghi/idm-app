@@ -1,0 +1,8 @@
+# Profilo predefinito finche' il cluster non dispone di MariaDB.
+# Per attivare JPA usare SPRING_PROFILES_ACTIVE=database e configurare
+# SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME e SPRING_DATASOURCE_PASSWORD.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration

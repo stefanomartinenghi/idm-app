@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:25.0.4_7-jre-alpine-3.22
 
 WORKDIR /app
 COPY image/idm-app.jar /app/idm-app.jar

@@ -21,7 +21,7 @@ concurrency:
 jobs:
   validate-tag:
     name: Validate release tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}

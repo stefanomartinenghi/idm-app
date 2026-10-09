@@ -1,12 +1,16 @@
 spring:
   application:
     name: idm-app
+  profiles:
+    default: no-database
 
 server:
   port: ${PORT:8080}
 
 app:
   environment: ${APP_ENV:local}
+  security:
+    enabled: ${SECURITY_ENABLED:false}
 
 management:
   endpoints:
